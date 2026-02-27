@@ -1,0 +1,78 @@
+import streamlit as st
+import requests
+from datetime import datetime
+from hijri_converter import Gregorian
+import pytz
+import geocoder # تأكد من تثبيت هذه المكتبة: pip install geocoder
+
+# إعدادات التصميم الذهبي
+st.set_page_config(page_title="تقويم الصلاة الذكي", layout="centered")
+
+st.markdown("""
+    <style>
+    .stApp { background-color: #0c0c0c; }
+    h1, h2, h3, p { color: #D4AF37 !important; text-align: center; }
+    .location-box { 
+        background: linear-gradient(45deg, #1a1a1a, #262626);
+        border: 1px solid #D4AF37;
+        border-radius: 10px;
+        padding: 10px;
+        margin-bottom: 20px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+def get_prayer_times_by_coords(lat, lng):
+    """جلب الأوقات بناءً على الإحداثيات الجغرافية"""
+    url = f"http://api.aladhan.com/v1/timings?latitude={lat}&longitude={lng}&method=4"
+    res = requests.get(url).json()
+    return res['data'] if res['code'] == 200 else None
+
+def get_user_location():
+    """تحديد إحداثيات المستخدم عبر الـ IP"""
+    g = geocoder.ip('me')
+    return g.latlng, g.city, g.country
+
+# --- بداية التطبيق ---
+st.markdown("<h1>✨ تقويم الصلاة الجغرافي</h1>", unsafe_allow_html=True)
+
+# 1. جلب موقع المستخدم تلقائياً
+coords, city, country = get_user_location()
+
+if coords:
+    lat, lng = coords
+    data = get_prayer_times_by_coords(lat, lng)
+    times = data['timings']
+    meta = data['meta']
+    
+    # عرض الموقع المكتشف
+    st.markdown(f"""
+    <div class="location-box">
+        <p>📍 موقعك المكتشف حالياً: <b>{city}, {country}</b></p>
+        <p>المنطقة الزمنية: {meta['timezone']}</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # التواريخ
+    now = datetime.now(pytz.timezone(meta['timezone']))
+    hijri = Gregorian(now.year, now.month, now.day).to_hijri()
+    
+    st.markdown(f"<h3>{hijri.day} {hijri.month_name()} {hijri.year} هـ</h3>", unsafe_allow_html=True)
+    
+    # عرض أوقات الصلاة في أعمدة
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("الفجر", times['Fajr'])
+        st.metric("الظهر", times['Dhuhr'])
+    with col2:
+        st.metric("الشروق", times['Sunrise'])
+        st.metric("العصر", times['Asr'])
+    with col3:
+        st.metric("المغرب", times['Maghrib'])
+        st.metric("العشاء", times['Isha'])
+
+else:
+    st.error("عذراً، لم نتمكن من تحديد موقعك تلقائياً. يرجى التأكد من اتصال الإنترنت.")
+
+st.write("---")
+st.caption("يتم تحديد الموقع بناءً على عنوان IP الخاص بك لضمان دقة مواقيت الصلاة المحلية.")
